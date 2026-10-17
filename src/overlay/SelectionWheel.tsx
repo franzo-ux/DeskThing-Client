@@ -86,28 +86,34 @@ const Wheel: React.FC = () => {
     }
   }, [selectedAction])
 
-  // Ring in the free part of the screen (the knob covers the right edge).
-  // The selected slot sits at the top with its name in the middle of the
-  // ring; the rotation is kept continuous so the icons slide around instead
-  // of jumping.
+  // Arc along the right edge, around the knob (like the original wheel).
+  // The selected slot sits on the left of the arc, the closest to the middle
+  // of the screen, with its name beside it; the others follow above and
+  // below, fading towards the edge. Every app keeps its place on the ring,
+  // so turning the knob slides the icons along the arc.
   const W = window.innerWidth
   const H = window.innerHeight
-  const cx = (W - 80) / 2
+  const cx = W + 20
   const cy = H / 2
-  const R = Math.min(H * 0.36, cx - 60)
-  const step = (2 * Math.PI) / n
+  const Rx = W * 0.375
+  const Ry = H * 0.46
+  const step = Math.min(0.5, (1.6 * Math.PI) / n)
 
   return (
     <div
       onClick={handleClose}
       className={`fixed inset-0 z-10 transition-opacity duration-200 ${opened ? 'opacity-100' : 'opacity-0'}`}
-      style={{ background: 'rgba(0,0,0,0.82)' }}
+      style={{ background: 'linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.65) 100%)' }}
     >
       {buttons.map((action, index) => {
-        const angle = -Math.PI / 2 + (index - wheelRotation) * step
-        const x = cx + R * Math.cos(angle)
-        const y = cy + R * Math.sin(angle)
-        const selected = index === selectedIndex
+        // distance from the selected slot, wrapped to -n/2 .. n/2
+        let d = (((index - wheelRotation) % n) + n) % n
+        if (d > n / 2) d -= n
+        const angle = Math.PI + d * step
+        const x = cx + Rx * Math.cos(angle)
+        const y = cy + Ry * Math.sin(angle)
+        const selected = d === 0
+        const far = Math.abs(d)
         return (
           <div
             key={index}
@@ -117,8 +123,8 @@ const Wheel: React.FC = () => {
               top: y - 32,
               width: 64,
               height: 64,
-              transform: `scale(${opened ? (selected ? 1.6 : 0.85) : 0.2})`,
-              opacity: selected ? 1 : 0.55,
+              transform: `scale(${opened ? (selected ? 1.6 : far === 1 ? 0.95 : 0.75) : 0.2})`,
+              opacity: selected ? 1 : far === 1 ? 0.7 : 0.4,
               zIndex: selected ? 2 : 1
             }}
           >
@@ -129,9 +135,9 @@ const Wheel: React.FC = () => {
       <div
         className="absolute text-white text-2xl whitespace-nowrap transition-all duration-300"
         style={{
-          left: cx,
+          right: W - (cx - Rx) + 70,
           top: cy,
-          transform: 'translate(-50%, -50%)',
+          transform: 'translateY(-50%)',
           opacity: opened ? 1 : 0,
           textShadow: '0 1px 4px #000'
         }}
