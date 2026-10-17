@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import ActionComponent from '../components/ui/Action'
 import { useAppStore, useMappingStore } from '@src/stores'
 import { Action, EventMode } from '@deskthing/types'
@@ -86,17 +86,54 @@ const Wheel: React.FC = () => {
     }
   }, [selectedAction])
 
-  // A real wheel around the knob (right edge): the slots are evenly spaced on
-  // a ring centred on the knob and the whole ring turns with it, so the slots
-  // behind the knob leave the screen. The selected slot is the one on the
-  // left of the ring, facing the middle of the screen, with its name beside it.
+  // A wheel around the knob. The centre is the one of the original DeskThing
+  // wheel (920, 161 on the 800x480 screen), i.e. the knob itself, just off
+  // the right edge. Slots sit STEP degrees apart on that ring: the selected
+  // one on the left, its neighbours above and below, the rest behind the
+  // knob, off screen. Each slot is an arm rotating around the centre, so the
+  // icons travel along the circle. A slot that wraps from one end of the ring
+  // to the other jumps there off screen (see the layout effect below).
   const W = window.innerWidth
   const H = window.innerHeight
-  const R = Math.round(H * 0.42)
-  const cx = W - 30
-  const cy = H / 2
-  const stepDeg = 360 / n
-  const turn = -wheelRotation * stepDeg // continuous: no jumps when wrapping
+  const cx = (920 / 800) * W
+  const cy = (161 / 480) * H
+  const R = (250 / 800) * W
+  const STEP = 36
+
+  // distance of each slot from the selected one, wrapped to -n/2 .. n/2
+  const dist = buttons.map((_, index) => {
+    let d = (((index - wheelRotation) % n) + n) % n
+    if (d > n / 2) d -= n
+    return d
+  })
+
+  const arms = useRef<(HTMLDivElement | null)[]>([])
+  const icons = useRef<(HTMLDivElement | null)[]>([])
+  const prevDist = useRef<number[]>([])
+  const iconTransform = (d: number, selected: boolean) =>
+    `rotate(${-d * STEP}deg) scale(${opened ? (selected ? 1.6 : 0.9) : 0.2})`
+
+  // A wrapping slot first jumps (no animation) to one step beyond the end it
+  // enters from - off screen - and then slides in like the others.
+  useLayoutEffect(() => {
+    dist.forEach((d, i) => {
+      const prev = prevDist.current[i]
+      const arm = arms.current[i]
+      const icon = icons.current[i]
+      if (prev === undefined || Math.abs(d - prev) <= 1 || !arm || !icon) return
+      const start = d + Math.sign(d - prev)
+      arm.style.transition = 'none'
+      icon.style.transition = 'none'
+      arm.style.transform = `rotate(${start * STEP}deg)`
+      icon.style.transform = iconTransform(start, false)
+      void arm.getBoundingClientRect() // apply the jump before animating
+      arm.style.transition = 'transform 300ms'
+      icon.style.transition = 'transform 300ms, opacity 300ms'
+      arm.style.transform = `rotate(${d * STEP}deg)`
+      icon.style.transform = iconTransform(d, d === 0)
+    })
+    prevDist.current = dist
+  })
 
   return (
     <div
@@ -104,33 +141,43 @@ const Wheel: React.FC = () => {
       className={`fixed inset-0 z-10 overflow-hidden transition-opacity duration-200 ${opened ? 'opacity-100' : 'opacity-0'}`}
       style={{ background: 'linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.65) 100%)' }}
     >
-      <div
-        className="absolute transition-transform duration-300"
-        style={{ left: cx - R, top: cy - R, width: 2 * R, height: 2 * R, transform: `rotate(${turn}deg)` }}
-      >
-        {buttons.map((action, index) => {
-          const angle = Math.PI + (index * stepDeg * Math.PI) / 180
-          const selected = index === selectedIndex
-          return (
+      {buttons.map((action, index) => {
+        const d = dist[index]
+        const selected = d === 0
+        return (
+          <div
+            key={index}
+            ref={(el) => (arms.current[index] = el)}
+            className="absolute"
+            style={{
+              left: cx,
+              top: cy,
+              width: 0,
+              height: 0,
+              transform: `rotate(${d * STEP}deg)`,
+              transition: 'transform 300ms'
+            }}
+          >
             <div
-              key={index}
-              className="absolute flex items-center justify-center transition-all duration-300"
+              ref={(el) => (icons.current[index] = el)}
+              className="absolute flex items-center justify-center"
               style={{
-                left: R + R * Math.cos(angle) - 32,
-                top: R + R * Math.sin(angle) - 32,
+                left: -R - 32,
+                top: -32,
                 width: 64,
                 height: 64,
-                // keep the icon upright while the ring turns
-                transform: `rotate(${-turn}deg) scale(${opened ? (selected ? 1.6 : 0.9) : 0.2})`,
+                // keep the icon upright while its arm turns
+                transform: iconTransform(d, selected),
                 opacity: selected ? 1 : 0.6,
-                zIndex: selected ? 2 : 1
+                zIndex: selected ? 2 : 1,
+                transition: 'transform 300ms, opacity 300ms'
               }}
             >
               <ActionComponent action={action} />
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
       <div
         className="absolute text-white text-2xl whitespace-nowrap transition-opacity duration-300"
         style={{
