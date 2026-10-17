@@ -99,6 +99,8 @@ const Wheel: React.FC = () => {
   const cy = (161 / 480) * H
   const R = (250 / 800) * W
   const STEP = 36
+  // which way the ring turns for a knob step (-1 follows the knob)
+  const DIR = -1
 
   // distance of each slot from the selected one, wrapped to -n/2 .. n/2
   const dist = buttons.map((_, index) => {
@@ -111,7 +113,7 @@ const Wheel: React.FC = () => {
   const icons = useRef<(HTMLDivElement | null)[]>([])
   const prevDist = useRef<number[]>([])
   const iconTransform = (d: number, selected: boolean) =>
-    `rotate(${-d * STEP}deg) scale(${opened ? (selected ? 1.6 : 0.9) : 0.2})`
+    `rotate(${-DIR * d * STEP}deg) scale(${opened ? (selected ? 1.6 : 0.9) : 0.2})`
 
   // A wrapping slot first jumps (no animation) to one step beyond the end it
   // enters from - off screen - and then slides in like the others.
@@ -124,12 +126,12 @@ const Wheel: React.FC = () => {
       const start = d + Math.sign(d - prev)
       arm.style.transition = 'none'
       icon.style.transition = 'none'
-      arm.style.transform = `rotate(${start * STEP}deg)`
+      arm.style.transform = `rotate(${DIR * start * STEP}deg)`
       icon.style.transform = iconTransform(start, false)
       void arm.getBoundingClientRect() // apply the jump before animating
       arm.style.transition = 'transform 300ms'
       icon.style.transition = 'transform 300ms, opacity 300ms'
-      arm.style.transform = `rotate(${d * STEP}deg)`
+      arm.style.transform = `rotate(${DIR * d * STEP}deg)`
       icon.style.transform = iconTransform(d, d === 0)
     })
     prevDist.current = dist
@@ -154,7 +156,7 @@ const Wheel: React.FC = () => {
               top: cy,
               width: 0,
               height: 0,
-              transform: `rotate(${d * STEP}deg)`,
+              transform: `rotate(${DIR * d * STEP}deg)`,
               transition: 'transform 300ms'
             }}
           >
