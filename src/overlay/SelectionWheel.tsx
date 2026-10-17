@@ -86,56 +86,55 @@ const Wheel: React.FC = () => {
     }
   }, [selectedAction])
 
-  // Arc along the right edge, around the knob (like the original wheel).
-  // The selected slot sits on the left of the arc, the closest to the middle
-  // of the screen, with its name beside it; the others follow above and
-  // below, fading towards the edge. Every app keeps its place on the ring,
-  // so turning the knob slides the icons along the arc.
+  // A real wheel around the knob (right edge): the slots are evenly spaced on
+  // a ring centred on the knob and the whole ring turns with it, so the slots
+  // behind the knob leave the screen. The selected slot is the one on the
+  // left of the ring, facing the middle of the screen, with its name beside it.
   const W = window.innerWidth
   const H = window.innerHeight
-  const cx = W + 20
+  const R = Math.round(H * 0.42)
+  const cx = W - 30
   const cy = H / 2
-  const Rx = W * 0.375
-  const Ry = H * 0.46
-  const step = Math.min(0.5, (1.6 * Math.PI) / n)
+  const stepDeg = 360 / n
+  const turn = -wheelRotation * stepDeg // continuous: no jumps when wrapping
 
   return (
     <div
       onClick={handleClose}
-      className={`fixed inset-0 z-10 transition-opacity duration-200 ${opened ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-10 overflow-hidden transition-opacity duration-200 ${opened ? 'opacity-100' : 'opacity-0'}`}
       style={{ background: 'linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.65) 100%)' }}
     >
-      {buttons.map((action, index) => {
-        // distance from the selected slot, wrapped to -n/2 .. n/2
-        let d = (((index - wheelRotation) % n) + n) % n
-        if (d > n / 2) d -= n
-        const angle = Math.PI + d * step
-        const x = cx + Rx * Math.cos(angle)
-        const y = cy + Ry * Math.sin(angle)
-        const selected = d === 0
-        const far = Math.abs(d)
-        return (
-          <div
-            key={index}
-            className="absolute flex items-center justify-center transition-all duration-300"
-            style={{
-              left: x - 32,
-              top: y - 32,
-              width: 64,
-              height: 64,
-              transform: `scale(${opened ? (selected ? 1.6 : far === 1 ? 0.95 : 0.75) : 0.2})`,
-              opacity: selected ? 1 : far === 1 ? 0.7 : 0.4,
-              zIndex: selected ? 2 : 1
-            }}
-          >
-            <ActionComponent action={action} />
-          </div>
-        )
-      })}
       <div
-        className="absolute text-white text-2xl whitespace-nowrap transition-all duration-300"
+        className="absolute transition-transform duration-300"
+        style={{ left: cx - R, top: cy - R, width: 2 * R, height: 2 * R, transform: `rotate(${turn}deg)` }}
+      >
+        {buttons.map((action, index) => {
+          const angle = Math.PI + (index * stepDeg * Math.PI) / 180
+          const selected = index === selectedIndex
+          return (
+            <div
+              key={index}
+              className="absolute flex items-center justify-center transition-all duration-300"
+              style={{
+                left: R + R * Math.cos(angle) - 32,
+                top: R + R * Math.sin(angle) - 32,
+                width: 64,
+                height: 64,
+                // keep the icon upright while the ring turns
+                transform: `rotate(${-turn}deg) scale(${opened ? (selected ? 1.6 : 0.9) : 0.2})`,
+                opacity: selected ? 1 : 0.6,
+                zIndex: selected ? 2 : 1
+              }}
+            >
+              <ActionComponent action={action} />
+            </div>
+          )
+        })}
+      </div>
+      <div
+        className="absolute text-white text-2xl whitespace-nowrap transition-opacity duration-300"
         style={{
-          right: W - (cx - Rx) + 70,
+          right: W - (cx - R) + 70,
           top: cy,
           transform: 'translateY(-50%)',
           opacity: opened ? 1 : 0,
