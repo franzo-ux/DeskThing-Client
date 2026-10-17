@@ -1,25 +1,60 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import ActionComponent from '../components/ui/Action'
-import { useMappingStore } from '@src/stores'
+import { useAppStore, useMappingStore } from '@src/stores'
 import { Action, EventMode } from '@deskthing/types'
 import { useActionStore } from '@src/stores/actionStore'
 
 const actionKeys = ['Wheel1', 'Wheel2', 'Wheel3', 'Wheel4']
+const MIN_SLOTS = 4
+const MAX_SLOTS = 8
 
 /**
- * The `Wheel` component represents a selection wheel UI element that allows the user to choose an action.
- * It displays a circular wheel with four action buttons that can be selected by the user.
- * The wheel can be opened and closed, and the selected action is executed when the user presses the Enter key.
- * The component uses the `useMappingStore` and `useActionStore` hooks to manage the state and behavior of the wheel.
+ * The `Wheel` component is the app wheel opened by pressing the knob.
+ *
+ * It has one slot per installed app (from 4 up to 8 slots), placed on a ring
+ * around the knob corner. The first four slots keep the user's Wheel1-4
+ * mappings; the extra ones open the next apps in the app list. Turning the
+ * knob moves the selection, pressing it runs the selected slot.
  */
 const Wheel: React.FC = () => {
-  const [selectedAction, setSelectedAction] = useState<string | null>(null)
-  const [buttons, setButtons] = useState<Action[]>([])
   const getButtonAction = useMappingStore((store) => store.getButtonAction)
   const executeAction = useMappingStore((store) => store.executeAction)
+  const profile = useMappingStore((store) => store.profile)
+  const apps = useAppStore((store) => store.apps)
   const [opened, setIsOpened] = useState<boolean>(false)
   const setWheelState = useActionStore((store) => store.setWheelState)
   const wheelRotation = useActionStore((store) => store.wheelRotation)
+
+  const buttons = useMemo(() => {
+    const count = Math.max(MIN_SLOTS, Math.min(MAX_SLOTS, apps.length))
+    const list: Action[] = []
+    for (let i = 0; i < count; i++) {
+      const mapped = i < actionKeys.length ? getButtonAction(actionKeys[i], EventMode.KeyDown) : undefined
+      list.push(
+        mapped ||
+          ({ id: 'pref', value: String(i), source: 'server', enabled: true, version_code: 0 } as unknown as Action)
+      )
+    }
+    return list
+  }, [getButtonAction, apps.length, profile])
+
+  const n = buttons.length || 1
+  const selectedIndex = ((wheelRotation % n) + n) % n
+  const selectedAction = buttons[selectedIndex]
+
+  const appLabel = (name: string | undefined) => {
+    const app = apps.find((a) => a.name === name)
+    return (app && ((app.manifest && app.manifest.label) || app.name)) || name || ''
+  }
+  const label = (action: Action | undefined): string => {
+    if (!action) return ''
+    if (action.id === 'pref') {
+      const app = apps[Number(action.value) || 0]
+      return app ? appLabel(app.name) : ''
+    }
+    if (action.id === 'open') return appLabel(action.value)
+    return action.name || action.id
+  }
 
   const handleClose = async () => {
     setIsOpened(false)
@@ -35,9 +70,8 @@ const Wheel: React.FC = () => {
       e.stopImmediatePropagation()
       if (e.key === 'Enter') {
         setIsOpened(false)
-        const action = getButtonAction(selectedAction as string, EventMode.KeyDown)
-        if (action) {
-          executeAction(action)
+        if (selectedAction) {
+          executeAction(selectedAction)
         }
         handleClose()
       }
@@ -52,47 +86,57 @@ const Wheel: React.FC = () => {
     }
   }, [selectedAction])
 
-  useEffect(() => {
-    const normalizedRotation = ((wheelRotation % 4) + 4) % 4
-    const gridToWheelMapping = [2, 3, 1, 0] // Maps grid positions to wheel positions
-    const selectedIndex = gridToWheelMapping[normalizedRotation]
-    setSelectedAction(actionKeys[selectedIndex])
-  }, [wheelRotation, buttons])
-
-  useEffect(() => {
-    const getActions = async () => {
-      const actions = actionKeys.map((key) => getButtonAction(key, EventMode.KeyDown))
-      setButtons(actions)
-    }
-    getActions()
-  }, [getButtonAction])
+  // Ring in the free part of the screen (the knob covers the right edge).
+  // The selected slot sits at the top with its name in the middle of the
+  // ring; the rotation is kept continuous so the icons slide around instead
+  // of jumping.
+  const W = window.innerWidth
+  const H = window.innerHeight
+  const cx = (W - 80) / 2
+  const cy = H / 2
+  const R = Math.min(H * 0.36, cx - 60)
+  const step = (2 * Math.PI) / n
 
   return (
     <div
-      className={`rounded-full z-10 lg:rotate-90 overflow-hidden flex items-center bg-gradient-radial from-black via-black/10 to-transparent w-[350px] h-[350px] transition-[transform,opacity] origin-center translate-x-[65vw] lg:translate-x-0 lg:translate-y-0 -translate-y-[30vh] fixed ${opened ? 'scale-[2] lg:scale-100 opacity-100' : 'scale-0 opacity-0'}`}
+      onClick={handleClose}
+      className={`fixed inset-0 z-10 transition-opacity duration-200 ${opened ? 'opacity-100' : 'opacity-0'}`}
+      style={{ background: 'rgba(0,0,0,0.82)' }}
     >
+      {buttons.map((action, index) => {
+        const angle = -Math.PI / 2 + (index - wheelRotation) * step
+        const x = cx + R * Math.cos(angle)
+        const y = cy + R * Math.sin(angle)
+        const selected = index === selectedIndex
+        return (
+          <div
+            key={index}
+            className="absolute flex items-center justify-center transition-all duration-300"
+            style={{
+              left: x - 32,
+              top: y - 32,
+              width: 64,
+              height: 64,
+              transform: `scale(${opened ? (selected ? 1.6 : 0.85) : 0.2})`,
+              opacity: selected ? 1 : 0.55,
+              zIndex: selected ? 2 : 1
+            }}
+          >
+            <ActionComponent action={action} />
+          </div>
+        )
+      })}
       <div
-        style={{ transform: `rotate(${wheelRotation * 90 + 45}deg)` }}
-        className="transition-all grid grid-cols-2 w-full h-full"
+        className="absolute text-white text-2xl whitespace-nowrap transition-all duration-300"
+        style={{
+          left: cx,
+          top: cy,
+          transform: 'translate(-50%, -50%)',
+          opacity: opened ? 1 : 0,
+          textShadow: '0 1px 4px #000'
+        }}
       >
-        {buttons.length > 0 &&
-          [buttons[0], buttons[1], buttons[2], buttons[3]].map((action, index) => (
-            <div
-              key={index}
-              className={`w-full h-full duration-300 flex lg:-rotate-90 items-center justify-center transition-all`}
-            >
-              <div
-                onClick={handleClose}
-                style={{ transform: `rotate(${-wheelRotation * 90 - 45}deg)` }}
-                className={`transition-all items-center justify-start w-1/4 h-1/4 flex`}
-              >
-                <ActionComponent
-                  action={action}
-                  className={`transition ${selectedAction == actionKeys[index] ? 'delay-300 lg:delay-100 scale-[2]' : 'opacity-75'}`}
-                />
-              </div>
-            </div>
-          ))}
+        {label(selectedAction)}
       </div>
     </div>
   )
