@@ -2,11 +2,11 @@
   "name": "Deskthing Client",
   "id": "deskthing",
   "short_name": "DT",
-  "description": "The base DeskthingUI for the DeskThing",
+  "description": "The base DeskthingUI for the DeskThing (franzo-ux fork: auto-size knob wheel, focus fix)",
   "reactive": true,
   "repository": "https://github.com/ItsRiprod/Deskthing-Client/",
   "author": "Riprod",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "compatibility": {
     "server": ">=0.11.7",
     "app": ">=0.11.0"
